@@ -1,5 +1,5 @@
 """
-MARTI ES LA MAS LINDA
+MARTI ES LA MAS LINDA Y RAMA EL MAS FACHA
 Actividad 1: Variables Aleatorias y Distribuciones
 Genera muestras de tres distribuciones, las compara con sus parámetros
 poblacionales y grafica los histogramas.
@@ -53,6 +53,7 @@ plt.show()
 
 # ------------------------------------------------------------------
 # 3. Estadísticos muestrales vs poblacionales
+#se podrian guardar en un json
 # ------------------------------------------------------------------
 def resumen(nombre, muestra, media_pob, sigma_pob):
     media_m = np.mean(muestra)
