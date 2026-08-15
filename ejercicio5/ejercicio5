@@ -1,0 +1,207 @@
+"""
+Actividad 5: Ergodicidad
+Promedios temporales vs estadísticos
+Procesamiento de Señales Biomédicas
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.stats as stats
+import pandas as pd
+
+np.random.seed(42)
+
+# ----------------------------------------------------------------------
+# Parámetros del proceso X(t) = A*cos(2*pi*f0*t + Phi)
+# ----------------------------------------------------------------------
+A = 2
+f0 = 5
+n_realizaciones = 150
+n_puntos = 1000
+t = np.linspace(0, 3, n_puntos)
+dt = t[1] - t[0]
+
+phi = np.random.uniform(0, 2 * np.pi, size=n_realizaciones)
+X = np.array([A * np.cos(2 * np.pi * f0 * t + phi[i]) for i in range(n_realizaciones)])
+# X.shape = (150, 1000)  -> filas = realizaciones, columnas = instantes de tiempo
+
+
+# ========================================================================
+# 1 y 2. Promedio estadístico (ensamble) vs promedio temporal
+# ========================================================================
+
+# --- Promedio ESTADÍSTICO: media de las 150 realizaciones en cada instante t ---
+promedio_estadistico = np.mean(X, axis=0)   # vector de 1000 valores (uno por t)
+
+# --- Promedio TEMPORAL: media a lo largo del tiempo, para cada realización ---
+promedio_temporal = np.mean(X, axis=1)      # vector de 150 valores (uno por realización)
+
+
+# ========================================================================
+# 3. Comparación de los promedios (primer momento: la media)
+# ========================================================================
+
+media_del_promedio_estadistico = np.mean(promedio_estadistico)
+media_de_promedios_temporales = np.mean(promedio_temporal)
+std_promedios_temporales = np.std(promedio_temporal, ddof=1)
+
+# --- Histograma de los promedios temporales ---
+plt.figure(figsize=(10, 5))
+plt.hist(promedio_temporal, bins=25, color="steelblue", edgecolor="black", alpha=0.8)
+plt.axvline(media_de_promedios_temporales, color="darkorange", linewidth=2,
+            label=f"Media de promedios temporales = {media_de_promedios_temporales:.4f}")
+plt.axvline(media_del_promedio_estadistico, color="red", linestyle="--", linewidth=2,
+            label=f"Media del promedio estadístico = {media_del_promedio_estadistico:.4f}")
+plt.axvline(0, color="gray", linestyle=":", linewidth=1.5, label="Media teórica = 0")
+plt.title("Histograma de los promedios temporales (150 realizaciones)")
+plt.xlabel("Promedio temporal de cada realización")
+plt.ylabel("Frecuencia")
+plt.legend()
+plt.tight_layout()
+plt.savefig("ergodicidad_histograma_medias.png", dpi=150)
+plt.show()
+
+print("="*70)
+print("COMPARACIÓN DE PROMEDIOS (MEDIA)")
+print("="*70)
+print(f"Media teórica (poblacional):                        0.0000")
+print(f"Media del promedio estadístico (prom. sobre t):     {media_del_promedio_estadistico: .5f}")
+print(f"Media de los promedios temporales (prom. sobre real.): {media_de_promedios_temporales: .5f}")
+print(f"Desv. estándar de los 150 promedios temporales:      {std_promedios_temporales: .5f}")
+print(f"Rango de los promedios temporales: [{promedio_temporal.min():.5f}, {promedio_temporal.max():.5f}]")
+
+
+# ========================================================================
+# 4. Ergodicidad en la autocorrelación: R_X(tau = 0.5)
+# ========================================================================
+
+tau_objetivo = 0.5
+k = int(round(tau_objetivo / dt))     # desplazamiento en muestras
+tau_real = k * dt                     # tau efectivo tras discretizar (aprox. 0.5 s)
+
+R_X_teorica = (A**2 / 2) * np.cos(2 * np.pi * f0 * tau_real)
+
+# --- (a) Promedio ESTADÍSTICO de R_X(tau): promedio de ensamble en un t0 fijo ---
+# R_X(t0, t0+tau) = E[X(t0) X(t0+tau)]  se estima promediando sobre las 150 realizaciones
+t0_idx = 0
+R_X_estadistico = np.mean(X[:, t0_idx] * X[:, t0_idx + k])
+
+# --- (b) Promedio TEMPORAL de R_X(tau): una por cada realización ---
+# Para cada realización i, se promedia en el tiempo: (1/(N-k)) * sum x_i[n] * x_i[n+k]
+R_X_temporal = np.array([
+    np.mean(X[i, : n_puntos - k] * X[i, k:]) for i in range(n_realizaciones)
+])
+
+media_R_X_temporal = np.mean(R_X_temporal)
+std_R_X_temporal = np.std(R_X_temporal, ddof=1)
+
+# --- Histograma de las autocorrelaciones temporales ---
+plt.figure(figsize=(10, 5))
+plt.hist(R_X_temporal, bins=25, color="seagreen", edgecolor="black", alpha=0.8)
+plt.axvline(media_R_X_temporal, color="darkorange", linewidth=2,
+            label=f"Media de $R_X^{{temporal}}(\\tau)$ = {media_R_X_temporal:.4f}")
+plt.axvline(R_X_estadistico, color="red", linestyle="--", linewidth=2,
+            label=f"$R_X(\\tau)$ estadística (t0 fijo) = {R_X_estadistico:.4f}")
+plt.axvline(R_X_teorica, color="black", linestyle=":", linewidth=2,
+            label=f"$R_X(\\tau)$ teórica = {R_X_teorica:.4f}")
+plt.title(f"Histograma de autocorrelaciones temporales por realización (τ≈{tau_real:.4f} s)")
+plt.xlabel(r"$\hat{R}_X^{temporal}(\tau)$ por realización")
+plt.ylabel("Frecuencia")
+plt.legend()
+plt.tight_layout()
+plt.savefig("ergodicidad_histograma_autocorrelacion.png", dpi=150)
+plt.show()
+
+print("\n" + "="*70)
+print(f"COMPARACIÓN DE AUTOCORRELACIÓN EN τ ≈ {tau_real:.4f} s (objetivo: 0.5 s)")
+print("="*70)
+print(f"R_X(tau) teórica (A²/2)cos(2πf0τ):                {R_X_teorica: .5f}")
+print(f"R_X(tau) - promedio ESTADÍSTICO (ensamble, t0=0):  {R_X_estadistico: .5f}")
+print(f"R_X(tau) - media de los promedios TEMPORALES:      {media_R_X_temporal: .5f}")
+print(f"Desv. estándar de las 150 autocorrelaciones temp.: {std_R_X_temporal: .5f}")
+
+
+# ----------------------------------------------------------------------
+# INTERPRETACIÓN / RESPUESTAS
+# ----------------------------------------------------------------------
+
+interpretacion = f"""
+================================================================================
+INTERPRETACIÓN: ¿ES ESTE PROCESO ERGÓDICO?
+================================================================================
+
+Sí, el proceso X(t) = A·cos(2πf₀t + Φ) es ERGÓDICO (tanto en media como
+en autocorrelación), y los resultados numéricos lo confirman:
+
+1) ERGODICIDAD EN LA MEDIA:
+   - Media teórica (poblacional):                    0.0000
+   - Media del promedio estadístico (sobre t):        {media_del_promedio_estadistico:.4f}
+   - Media de los 150 promedios temporales:            {media_de_promedios_temporales:.4f}
+
+   Los tres valores son prácticamente iguales (todos muy cercanos a 0,
+   con diferencias del orden de 10⁻³ atribuibles al tamaño finito de la
+   muestra). Además, el histograma de los promedios temporales muestra
+   que estos se distribuyen de forma simétrica y compacta alrededor de
+   0, con una desviación estándar pequeña ({std_promedios_temporales:.4f}). Esto
+   significa que **una sola realización larga es suficiente para
+   estimar correctamente la media del proceso**, sin necesidad de
+   promediar sobre múltiples realizaciones — que es exactamente la
+   definición de ergodicidad en media.
+
+2) ERGODICIDAD EN LA AUTOCORRELACIÓN (τ ≈ {tau_real:.3f} s):
+   - R_X(τ) teórica:                                   {R_X_teorica:.4f}
+   - R_X(τ) por promedio estadístico (ensamble):        {R_X_estadistico:.4f}
+   - R_X(τ) por promedio temporal (media de 150 real.): {media_R_X_temporal:.4f}
+
+   Nuevamente, los tres valores coinciden con muy buena aproximación.
+   El histograma de las 150 autocorrelaciones temporales (una por
+   realización) se concentra estrechamente alrededor del valor teórico
+   {R_X_teorica:.4f}, con una desviación estándar de solo {std_R_X_temporal:.4f}.
+   Esto confirma que el promedio temporal dentro de UNA sola realización
+   también es un buen estimador de la autocorrelación de ensamble.
+
+POR QUÉ OCURRE ESTO:
+El proceso X(t) tiene una única fuente de aleatoriedad: la fase Φ, que
+es constante a lo largo de toda la realización (no cambia con t). Una
+vez fijada Φ, la señal es completamente determinística y periódica.
+Al promediar en el tiempo dentro de una realización larga (que cubre
+muchos períodos completos de la señal, ya que 3 s × 5 Hz = 15 ciclos),
+el promedio temporal termina "recorriendo" efectivamente todos los
+valores posibles de la fase relativa dentro del ciclo, logrando el
+mismo efecto que promediar sobre muchas realizaciones con distintas
+fases Φ. Esta es la razón intuitiva por la que el promedio temporal de
+una única realización converge al promedio de ensamble.
+
+CONCLUSIÓN:
+Dado que el proceso es estacionario (Actividades 2 y 3) y que sus
+promedios temporales (de una sola realización) coinciden con sus
+promedios estadísticos (de ensamble) tanto para la media como para la
+autocorrelación, X(t) cumple la definición de proceso ERGÓDICO (en
+sentido amplio, para los momentos de primer y segundo orden evaluados).
+En la práctica biomédica esto es muy valioso: permite estimar las
+propiedades estadísticas de una señal (por ejemplo, un registro de EEG
+o ECG asumido estacionario) a partir de UN SOLO registro suficientemente
+largo, sin necesidad de repetir el experimento en múltiples sujetos o
+sesiones para obtener esas mismas propiedades.
+
+Nota importante: esta conclusión aplica a X(t), que es estacionario.
+El proceso Y(t) = X(t) + 0.5t analizado en actividades anteriores NO es
+estacionario y, por lo tanto, NO puede ser ergódico: como su media y su
+autocorrelación cambian con el tiempo absoluto, un promedio temporal
+(que mezcla información de todos los instantes) no puede representar
+fielmente ninguna propiedad "puntual" del proceso en un t específico.
+================================================================================
+"""
+
+print(interpretacion)
+
+# Guardar resultados en CSV
+resumen = pd.DataFrame({
+    "realizacion": np.arange(1, n_realizaciones + 1),
+    "promedio_temporal": promedio_temporal,
+    "autocorrelacion_temporal_tau": R_X_temporal,
+})
+resumen.to_csv("resumen_ergodicidad.csv", index=False)
+
+print("Archivos generados: ergodicidad_histograma_medias.png,")
+print("ergodicidad_histograma_autocorrelacion.png, resumen_ergodicidad.csv")
