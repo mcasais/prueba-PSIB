@@ -1,0 +1,300 @@
+"""
+Actividad 3: Análisis de Autocorrelación
+Procesamiento de Señales Biomédicas
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.stats as stats
+import pandas as pd
+
+np.random.seed(42)
+
+# ----------------------------------------------------------------------
+# Parámetros del proceso
+# ----------------------------------------------------------------------
+A = 2
+f0 = 5
+
+# ========================================================================
+# PARTE 1: Autocorrelación TEÓRICA de X(t) = A·cos(2πf0t + Φ)
+# ========================================================================
+
+def autocorrelacion_teorica_X(tau, A=A, f0=f0):
+    """
+    Calcula R_X(tau) = E[X(t)X(t+tau)] de forma analítica.
+
+    Deducción:
+    X(t)X(t+tau) = A^2 cos(2*pi*f0*t + phi) * cos(2*pi*f0*(t+tau) + phi)
+
+    Usando la identidad cos(a)cos(b) = 1/2[cos(a-b) + cos(a+b)]:
+
+    X(t)X(t+tau) = (A^2/2)[cos(2*pi*f0*tau) + cos(2*pi*f0*(2t+tau) + 2*phi)]
+
+    Al tomar el valor esperado sobre Phi ~ Uniforme[0, 2*pi], el segundo
+    término se cancela (integral de un coseno sobre un ciclo completo de
+    fase = 0), quedando:
+
+        R_X(tau) = (A^2 / 2) * cos(2*pi*f0*tau)
+    """
+    return (A**2 / 2) * np.cos(2 * np.pi * f0 * tau)
+
+
+tau_vals = np.linspace(-2, 2, 800)
+R_X_teorica = autocorrelacion_teorica_X(tau_vals)
+
+plt.figure(figsize=(12, 5))
+plt.plot(tau_vals, R_X_teorica, color="red", linewidth=2)
+plt.title(r"Autocorrelación teórica $R_X(\tau) = \frac{A^2}{2}\cos(2\pi f_0 \tau)$")
+plt.xlabel(r"$\tau$ (s)")
+plt.ylabel(r"$R_X(\tau)$")
+plt.grid(alpha=0.3)
+plt.axhline(0, color="gray", linewidth=0.8)
+plt.tight_layout()
+plt.savefig("autocorrelacion_X_teorica.png", dpi=150)
+plt.show()
+
+
+# ========================================================================
+# PARTE 2: Autocorrelación EMPÍRICA a partir de una realización larga
+# ========================================================================
+
+def autocorrelacion_empirica(x, dt, tau_max):
+    """
+    Calcula la autocorrelación empírica (promedio temporal) de una señal
+    x muestreada con paso dt, para retardos tau en [-tau_max, tau_max].
+
+    Se asume que el proceso es ergódico en media y autocorrelación, es
+    decir, que el promedio temporal de una única realización larga es un
+    buen estimador del promedio de ensamble E[X(t)X(t+tau)].
+
+    Estimador (no sesgado):
+        R_hat[k] = (1 / (N - k)) * sum_{n=0}^{N-k-1} x[n] * x[n+k]
+
+    Retorna: (tau_array, R_hat_array)
+    """
+    N = len(x)
+    k_max = int(round(tau_max / dt))
+    k_max = min(k_max, N - 1)
+
+    R_pos = np.zeros(k_max + 1)
+    for k in range(k_max + 1):
+        R_pos[k] = np.mean(x[: N - k] * x[k:])
+
+    # La autocorrelación de un proceso real y estacionario es simétrica:
+    # R(-tau) = R(tau). Reconstruimos el lado negativo por simetría.
+    R_neg = R_pos[::-1]
+    R_completa = np.concatenate([R_neg[:-1], R_pos])
+    tau_completa = np.concatenate([-np.arange(k_max, 0, -1) * dt, np.arange(0, k_max + 1) * dt])
+
+    return tau_completa, R_completa
+
+
+# --- Generar una realización larga de X(t): 3000 puntos ---
+n_puntos_largo = 3000
+t_largo = np.linspace(0, 6, n_puntos_largo)   # duración de 6 s -> suficiente para tau hasta 2 s
+dt = t_largo[1] - t_largo[0]
+
+phi_unica = np.random.uniform(0, 2 * np.pi)   # una sola fase para esta realización
+x_largo = A * np.cos(2 * np.pi * f0 * t_largo + phi_unica)
+
+tau_empirica, R_X_empirica = autocorrelacion_empirica(x_largo, dt, tau_max=2)
+
+# --- Comparación en un mismo gráfico ---
+plt.figure(figsize=(12, 5))
+plt.plot(tau_vals, R_X_teorica, color="red", linewidth=2, label="$R_X(\\tau)$ teórica")
+plt.plot(tau_empirica, R_X_empirica, color="steelblue", linewidth=1, alpha=0.8,
+         linestyle="--", label="$R_X(\\tau)$ empírica (1 realización, 3000 pts)")
+plt.title("Autocorrelación de X(t): teórica vs empírica")
+plt.xlabel(r"$\tau$ (s)")
+plt.ylabel(r"$R_X(\tau)$")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.axhline(0, color="gray", linewidth=0.8)
+plt.tight_layout()
+plt.savefig("autocorrelacion_X_comparacion.png", dpi=150)
+plt.show()
+
+print("="*70)
+print("AUTOCORRELACIÓN DE X(t)")
+print("="*70)
+print(f"R_X(0) teórica  = {autocorrelacion_teorica_X(0):.4f}   (= A²/2 = {A**2/2:.4f})")
+idx_tau0 = np.argmin(np.abs(tau_empirica))
+print(f"R_X(0) empírica = {R_X_empirica[idx_tau0]:.4f}")
+
+
+# ========================================================================
+# PARTE 3: Interpretación (ver texto impreso al final)
+# ========================================================================
+
+
+# ========================================================================
+# DESAFÍO ADICIONAL: Proceso con deriva Y(t) = X(t) + 0.5t
+# ========================================================================
+
+def autocorrelacion_teorica_Y(t1, t2, A=A, f0=f0):
+    """
+    Calcula R_Y(t1, t2) = E[Y(t1)Y(t2)] de forma analítica, donde
+    Y(t) = X(t) + 0.5*t.
+
+    Deducción:
+    Y(t1)Y(t2) = [X(t1) + 0.5*t1][X(t2) + 0.5*t2]
+               = X(t1)X(t2) + 0.5*t2*X(t1) + 0.5*t1*X(t2) + 0.25*t1*t2
+
+    Tomando esperanza y usando que E[X(t)] = 0 para todo t:
+
+        R_Y(t1, t2) = R_X(t1, t2) + 0.25 * t1 * t2
+        R_Y(t1, t2) = (A^2/2) * cos(2*pi*f0*(t2 - t1)) + 0.25 * t1 * t2
+
+    A diferencia de R_X, esta expresión NO depende solo de tau = t2 - t1,
+    sino también de los valores absolutos de t1 y t2 (por el término
+    0.25*t1*t2). Esto es la firma matemática de la NO estacionariedad.
+    """
+    tau = t2 - t1
+    return (A**2 / 2) * np.cos(2 * np.pi * f0 * tau) + 0.25 * t1 * t2
+
+
+# Comparamos R_Y(t1, t1+tau) para dos valores distintos de t1 (0 y 2)
+# Si el proceso fuera estacionario, ambas curvas coincidirían.
+t1_a = 0.0
+t1_b = 2.0
+
+R_Y_t1a = np.array([autocorrelacion_teorica_Y(t1_a, t1_a + tau) for tau in tau_vals])
+R_Y_t1b = np.array([autocorrelacion_teorica_Y(t1_b, t1_b + tau) for tau in tau_vals])
+
+plt.figure(figsize=(12, 5))
+plt.plot(tau_vals, R_X_teorica, color="red", linewidth=2, linestyle=":",
+         label="$R_X(\\tau)$ (referencia, proceso sin deriva)")
+plt.plot(tau_vals, R_Y_t1a, color="darkorange", linewidth=2,
+         label=f"$R_Y(t_1={t1_a}, t_1+\\tau)$")
+plt.plot(tau_vals, R_Y_t1b, color="purple", linewidth=2,
+         label=f"$R_Y(t_1={t1_b}, t_1+\\tau)$")
+plt.title(r"Autocorrelación teórica de Y(t) para distintos valores de $t_1$")
+plt.xlabel(r"$\tau$ (s)")
+plt.ylabel(r"$R_Y(t_1, t_1+\tau)$")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig("autocorrelacion_Y_no_estacionaria.png", dpi=150)
+plt.show()
+
+# --- Autocorrelación empírica de Y(t) (aplicando el mismo método que a X) ---
+y_largo = x_largo + 0.5 * t_largo
+tau_empirica_Y, R_Y_empirica = autocorrelacion_empirica(y_largo, dt, tau_max=2)
+
+plt.figure(figsize=(12, 5))
+plt.plot(tau_vals, R_X_teorica, color="red", linestyle=":", label="$R_X(\\tau)$ (referencia)")
+plt.plot(tau_empirica_Y, R_Y_empirica, color="seagreen", label="$R_Y(\\tau)$ empírica (1 realización)")
+plt.title("Autocorrelación empírica de Y(t): el método de promedio temporal ya no es válido")
+plt.xlabel(r"$\tau$ (s)")
+plt.ylabel("Autocorrelación")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig("autocorrelacion_Y_empirica.png", dpi=150)
+plt.show()
+
+print("\n" + "="*70)
+print("AUTOCORRELACIÓN DE Y(t) = X(t) + 0.5t")
+print("="*70)
+print(f"R_Y(t1=0, t2=0+tau=0)   = {autocorrelacion_teorica_Y(0, 0):.4f}")
+print(f"R_Y(t1=2, t2=2+tau=0)   = {autocorrelacion_teorica_Y(2, 2):.4f}")
+print("-> Ambos deberían ser iguales a R_X(0) si el proceso fuera estacionario;")
+print("   sin embargo difieren porque incluyen el término 0.25*t1*t2.")
+
+
+# ----------------------------------------------------------------------
+# INTERPRETACIÓN / RESPUESTAS
+# ----------------------------------------------------------------------
+
+interpretacion = """
+================================================================================
+INTERPRETACIÓN
+================================================================================
+
+1) ¿QUÉ INDICA EL VALOR DE R_X(0)?
+
+R_X(0) = E[X(t)^2] es la POTENCIA MEDIA (o valor cuadrático medio) del
+proceso. Para X(t) = A*cos(2*pi*f0*t + Phi):
+
+    R_X(0) = A^2 / 2 = 2^2 / 2 = 2
+
+Esto coincide con el resultado bien conocido de que la potencia promedio
+de una señal senoidal de amplitud A es A²/2. En términos prácticos,
+indica "cuánta energía por unidad de tiempo" transporta la señal en
+promedio, sin importar la fase aleatoria de cada realización particular.
+
+
+2) ¿QUÉ FORMA TIENE R_X(τ)? ¿POR QUÉ?
+
+R_X(τ) tiene forma de COSENO, con la misma frecuencia f0 que la señal
+original, y amplitud A²/2 (es decir, oscila entre -2 y +2, sin decaer
+nunca con τ). Esto ocurre porque X(t) es un proceso puramente periódico
+y determinístico salvo por su fase: una vez fijada Φ, el proceso queda
+completamente definido para todo tiempo futuro. Como no hay ningún
+componente de "olvido" o ruido adicional, la correlación entre X(t) y
+X(t+τ) nunca se atenúa: siempre que τ sea múltiplo del período (1/f0),
+la señal vuelve a estar perfectamente correlacionada consigo misma
+(R_X(τ) = R_X(0)), y cuando τ es un múltiplo impar de medio período,
+la correlación es máximamente negativa. Este comportamiento NO decreciente
+es característico de procesos periódicos / no mixtos: a diferencia de
+procesos con memoria limitada (como ruido filtrado), este proceso
+"recuerda" su fase para siempre.
+
+
+3) ¿LA AUTOCORRELACIÓN DEPENDE SOLO DE τ?
+
+Sí, para X(t): R_X(t1, t2) depende ÚNICAMENTE de τ = t2 - t1, y no de
+los valores absolutos de t1 o t2. Esto es precisamente la condición que,
+junto con la media constante (vista en la Actividad 2), confirma que
+X(t) es un proceso ESTACIONARIO EN SENTIDO AMPLIO (WSS). La coincidencia
+casi perfecta entre la curva empírica (calculada con una sola
+realización larga, usando promedios temporales) y la curva teórica
+(calculada con promedios de ensamble sobre Φ) es además evidencia de que
+el proceso es ERGÓDICO en autocorrelación: una única realización larga
+en el tiempo contiene la misma información estadística que promediar
+muchas realizaciones cortas.
+
+
+DESAFÍO ADICIONAL: PROCESO CON DERIVA Y(t) = X(t) + 0.5t
+--------------------------------------------------------
+Para Y(t), la autocorrelación teórica resulta:
+
+    R_Y(t1, t2) = (A²/2)·cos(2πf0(t2-t1)) + 0.25·t1·t2
+
+El primer término depende solo de τ = t2-t1 (igual que antes), pero el
+segundo término, 0.25·t1·t2, depende de los valores ABSOLUTOS de t1 y
+t2, no solo de su diferencia. Esto se ve claramente en el gráfico: al
+comparar R_Y(t1=0, t1+τ) contra R_Y(t1=2, t1+τ), las dos curvas NO
+coinciden — la segunda está desplazada hacia arriba, porque a medida
+que t1 crece, el término de deriva (0.25·t1·t2) también crece.
+
+Esto confirma matemáticamente que Y(t) NO es estacionario: su
+autocorrelación no depende solo del desfase τ, sino también de "en qué
+momento del tiempo" se evalúa. Además, el método de autocorrelación
+empírica por promedio temporal (válido para X(t) por ser ergódico)
+YA NO es apropiado para Y(t): como se observa en el gráfico
+correspondiente, el resultado empírico se aparta sistemáticamente de la
+forma cosenoidal pura, reflejando la componente de tendencia. En la
+práctica biomédica, esto es relevante porque muchos algoritmos de
+análisis espectral y de autocorrelación (por ejemplo, en el análisis de
+variabilidad de la frecuencia cardíaca o en EEG) ASUMEN estacionariedad;
+si la señal real tiene una deriva de línea base (como Y(t)), es
+necesario remover esa tendencia (detrending) antes de aplicar dichos
+métodos, o los resultados serán engañosos.
+================================================================================
+"""
+
+print(interpretacion)
+
+# Guardar resultados en CSV
+resumen_autocorr = pd.DataFrame({
+    "tau": tau_empirica,
+    "R_X_empirica": R_X_empirica,
+    "R_X_teorica": autocorrelacion_teorica_X(tau_empirica),
+})
+resumen_autocorr.to_csv("resumen_autocorrelacion_X.csv", index=False)
+
+print("Archivos generados: autocorrelacion_X_teorica.png, autocorrelacion_X_comparacion.png,")
+print("autocorrelacion_Y_no_estacionaria.png, autocorrelacion_Y_empirica.png,")
+print("resumen_autocorrelacion_X.csv")
